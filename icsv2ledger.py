@@ -10,6 +10,8 @@ from __future__ import print_function
 import csv
 import sys
 import os
+import shutil
+from PIL import Image
 import hashlib
 import re
 import subprocess
@@ -18,6 +20,9 @@ import rlcompleter
 import ConfigParser
 from datetime import datetime
 from operator import attrgetter
+import Tkinter, tkFileDialog
+import pyinsane.abstract as pyinsane
+from pyinsane.abstract import SaneException
 
 try:
     # argparse is in standard library as of Python >= 2.7 and >= 3.2
@@ -67,7 +72,8 @@ DEFAULTS = dotdict({
     'quiet': False,
     'skip_lines': str(1),
     'tags': False,
-    'delimiter': ','})
+    'delimiter': ',',
+    'scan_receipts': False})
 
 FILE_DEFAULTS = dotdict({
     'config_file': [
@@ -286,6 +292,15 @@ def parse_args_and_config_file():
         metavar='STR',
         help=('delimiter between field in the csv'
               ' (default: {0})'.format(DEFAULTS.csv_date_format)))
+    parser.add_argument(
+        '--scan-receipts',
+        action='store_true',
+        help=('copy image to destination and add path as tag'
+              ' (default: {0})'.format(DEFAULTS.scan_receipts)))
+    parser.add_argument(
+        '--image-directory',
+        action='store',
+        help=('destination directory for scanned images'))
 
     args = parser.parse_args(remaining_argv)
 
@@ -375,7 +390,7 @@ class Entry:
             self.desc,
             self.credit if self.credit else "-" + self.debit)
 
-    def journal_entry(self, transaction_index, payee, account, tags):
+    def journal_entry(self, transaction_index, payee, account, tags, receipt):
         """
         Return a formatted journal entry recording this Entry against
         the specified Ledger account
@@ -399,7 +414,8 @@ class Entry:
 
             'tags': '\n    ; '.join(tags),
             'md5sum': self.md5sum,
-            'csv': self.raw_csv}
+            'csv': self.raw_csv,
+            'receipt': receipt}
         return template.format(
             **dict(format_data.items() + self.addons.items()))
 
@@ -535,6 +551,24 @@ def prompt_for_value(prompt, values, default):
 
     return raw_input('{0} [{1}] > '.format(prompt, default))
 
+def set_up_scanner():
+
+    devices = pyinsane.get_devices()
+    if len(devices) <= 0:
+        print('no scanner available')
+        return
+
+    device = devices[0]
+
+    print("I'm going to use the following scanner: %s" % (str(device)))
+    scanner_id = device.name
+
+    device.options['resolution'].value = 300
+    device.options['deskew detection'].value = 1
+    device.options['auto scan'].value = 1
+    device.options['Size'].value = 'Auto Size'
+
+    return device
 
 def reset_stdin():
     """ If file input is stdin, then stdin must be reset to be able
@@ -574,6 +608,51 @@ def main():
         possible_payees.add(m[1])
         possible_accounts.add(m[2])
         possible_tags.update(set(m[3]))
+
+    if options.scan_receipts:
+        device = set_up_scanner()
+
+    def scan_receipt(entry, payee):
+        # http://docs.python.org/2/library/shutil.html
+        value = prompt_for_value('(S)can, (C)hoose, or (P)ass', ['Scan', 'Choose', 'Pass'], 'Pass')
+        if value:
+            value = value.upper()
+        else:
+            value = 'PASS'
+
+        if value == 'CHOOSE' or value == 'C':
+            root = Tkinter.Tk()
+            root.withdraw()
+
+            orig_image_path = tkFileDialog.askopenfilename()
+            img = Image.open(orig_image_path)
+        elif value == 'SCAN' or value == 'S':
+            scan_session = device.scan(multiple=False)
+            try:
+                while True:
+                    scan_session.scan.read()
+            except SaneException:
+                scan_session.scan.cancel()
+                raise
+            except EOFError:
+                pass
+            img = scan_session.images[0]
+        elif value == 'PASS' or value == 'P':
+            return
+        else:
+            raise ValueError('Must be one of: Scan, Choose, or Pass')
+
+        amount = entry.credit if entry.credit else entry.debit
+        for ch in ['-', '.']:
+            if ch in amount:
+                amount = amount.replace(ch, '')
+
+        output_file_name = '{0}_{1}_{2}.jpg'.format(entry.date, payee, amount)
+        output_file_path = os.path.join(options.image_directory, output_file_name)
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        img.save(output_file_path, "JPEG")
+        return(output_file_path)
 
     def get_payee_and_account(entry):
         payee = entry.desc
@@ -651,8 +730,21 @@ def main():
             entry = Entry(row, csv_lines[options.skip_lines + i],
                           options)
             payee, account, tags = get_payee_and_account(entry)
+            if options.scan_receipts:
+                attempts = 0
+                while attempts < 3:
+                    try:
+                        reciept = scan_receipt(entry, payee)
+                        break
+                    except SaneException:
+                        attempts += 1
+                        print('Got SaneException, trying attempt {0} of 3'.format(attempts))
+
+            else:
+                reciept = None
+
             ledger_lines.append(
-                entry.journal_entry(i + 1, payee, account, tags))
+                entry.journal_entry(i + 1, payee, account, tags, reciept))
 
         return ledger_lines
 
