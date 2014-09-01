@@ -615,6 +615,8 @@ def main():
     def scan_receipt(entry, payee):
         # http://docs.python.org/2/library/shutil.html
         value = prompt_for_value('(S)can, (C)hoose, or (P)ass', ['Scan', 'Choose', 'Pass'], 'Pass')
+        file_extension = ".jpg"
+        file_is_pdf = False
         if value:
             value = value.upper()
         else:
@@ -625,7 +627,12 @@ def main():
             root.withdraw()
 
             orig_image_path = tkFileDialog.askopenfilename()
-            img = Image.open(orig_image_path)
+            file_name, file_extension = os.path.splitext(orig_image_path)
+            if file_extension.upper() == ".PDF":
+                file_is_pdf = True
+                img = orig_image_path
+            else:
+                img = Image.open(orig_image_path)
         elif value == 'SCAN' or value == 'S':
             scan_session = device.scan(multiple=False)
             try:
@@ -647,11 +654,14 @@ def main():
             if ch in amount:
                 amount = amount.replace(ch, '')
 
-        output_file_name = '{0}_{1}_{2}.jpg'.format(entry.date, payee, amount)
+        output_file_name = '{0}_{1}_{2}{3}'.format(entry.date, payee, amount, file_extension)
         output_file_path = os.path.join(options.image_directory, output_file_name)
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
-        img.save(output_file_path, "JPEG")
+        if file_is_pdf:
+            os.rename(orig_image_path, output_file_path)
+        else:
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img.save(output_file_path, "JPEG")
         return(output_file_path)
 
     def get_payee_and_account(entry):
