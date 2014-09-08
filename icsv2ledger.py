@@ -11,18 +11,15 @@ import csv
 import sys
 import os
 import shutil
-from PIL import Image
 import hashlib
 import re
 import subprocess
 import readline
 import rlcompleter
 import ConfigParser
+import scan
 from datetime import datetime
 from operator import attrgetter
-import Tkinter, tkFileDialog
-import pyinsane.abstract as pyinsane
-from pyinsane.abstract import SaneException
 
 try:
     # argparse is in standard library as of Python >= 2.7 and >= 3.2
@@ -451,7 +448,7 @@ def accounts_from_ledger(ledger_file):
 
 
 def from_ledger(ledger_file, command):
-    ledger = 'ledger'
+    ledger = 'ledger'    
     for f in ['/usr/bin/ledger', '/usr/local/bin/ledger']:
         if os.path.exists(f):
             ledger = f
@@ -551,25 +548,6 @@ def prompt_for_value(prompt, values, default):
 
     return raw_input('{0} [{1}] > '.format(prompt, default))
 
-def set_up_scanner():
-
-    devices = pyinsane.get_devices()
-    if len(devices) <= 0:
-        print('no scanner available')
-        return
-
-    device = devices[0]
-
-    print("I'm going to use the following scanner: %s" % (str(device)))
-    scanner_id = device.name
-
-    device.options['resolution'].value = 300
-    device.options['deskew detection'].value = 1
-    device.options['auto scan'].value = 1
-    device.options['Size'].value = 'Auto Size'
-
-    return device
-
 def reset_stdin():
     """ If file input is stdin, then stdin must be reset to be able
     to use readline. How to reset stdin in explained in below URLs.
@@ -610,59 +588,7 @@ def main():
         possible_tags.update(set(m[3]))
 
     if options.scan_receipts:
-        device = set_up_scanner()
-
-    def scan_receipt(entry, payee):
-        # http://docs.python.org/2/library/shutil.html
-        value = prompt_for_value('(S)can, (C)hoose, or (P)ass', ['Scan', 'Choose', 'Pass'], 'Pass')
-        file_extension = ".jpg"
-        file_is_pdf = False
-        if value:
-            value = value.upper()
-        else:
-            value = 'PASS'
-
-        if value == 'CHOOSE' or value == 'C':
-            root = Tkinter.Tk()
-            root.withdraw()
-
-            orig_image_path = tkFileDialog.askopenfilename()
-            file_name, file_extension = os.path.splitext(orig_image_path)
-            if file_extension.upper() == ".PDF":
-                file_is_pdf = True
-                img = orig_image_path
-            else:
-                img = Image.open(orig_image_path)
-        elif value == 'SCAN' or value == 'S':
-            scan_session = device.scan(multiple=False)
-            try:
-                while True:
-                    scan_session.scan.read()
-            except SaneException:
-                scan_session.scan.cancel()
-                raise
-            except EOFError:
-                pass
-            img = scan_session.images[0]
-        elif value == 'PASS' or value == 'P':
-            return
-        else:
-            raise ValueError('Must be one of: Scan, Choose, or Pass')
-
-        amount = entry.credit if entry.credit else entry.debit
-        for ch in ['-', '.']:
-            if ch in amount:
-                amount = amount.replace(ch, '')
-
-        output_file_name = '{0}_{1}_{2}{3}'.format(entry.date, payee, amount, file_extension)
-        output_file_path = os.path.join(options.image_directory, output_file_name)
-        if file_is_pdf:
-            os.rename(orig_image_path, output_file_path)
-        else:
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            img.save(output_file_path, "JPEG")
-        return(output_file_path)
+        device = scan.setup_scanner(scan.onesided_no_swdeskew)
 
     def get_payee_and_account(entry):
         payee = entry.desc
@@ -741,20 +667,12 @@ def main():
                           options)
             payee, account, tags = get_payee_and_account(entry)
             if options.scan_receipts:
-                attempts = 0
-                while attempts < 3:
-                    try:
-                        reciept = scan_receipt(entry, payee)
-                        break
-                    except SaneException:
-                        attempts += 1
-                        print('Got SaneException, trying attempt {0} of 3'.format(attempts))
-
+                receipt = scan.try_scan(entry, payee, device, options.image_directory)
             else:
-                reciept = None
+                receipt = None
 
             ledger_lines.append(
-                entry.journal_entry(i + 1, payee, account, tags, reciept))
+                entry.journal_entry(i + 1, payee, account, tags, receipt))
 
         return ledger_lines
 
