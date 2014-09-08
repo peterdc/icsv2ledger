@@ -34,8 +34,9 @@ The 'i' stands for __interactive__. Here's what it's designed to do:
 
 * The payee/account names used in the auto-completion are read both from
   the mapping file and, optionally, from a Ledger file or files. It runs
-  `ledger payees` and `ledger accounts` to get the names. The tags are
-  only read from the mapping file.
+  `ledger payees` and `ledger accounts` to get the names. It can also
+  scan a seperate ledger file containing 'account' definitions. The tags are
+  only read from the mapping file. 
 
 
 Synopsis
@@ -68,6 +69,7 @@ Options can either be used from command line or in configuration file.
     --credit INT          CSV column number matching credit amount
     --csv-date-format STR
                           date format in CSV input file
+    --csv-decimal-comma   comma as decimal separator in the CSV
     --currency STR        the currency of amounts
     --date INT            CSV column number matching date
     --debit INT           CSV column number matching debit amount
@@ -78,9 +80,12 @@ Options can either be used from command line or in configuration file.
     --effective-date INT  CSV column number matching effective date
     --ledger-date-format STR
                           date format for ledger output file
+    --ledger-decimal-comma
+                          comma as decimal separator in the ledger
     --ledger-file FILE, -l FILE
                           ledger file where to read payees/accounts
     --mapping-file FILE   file which holds the mappings
+    --accounts-file FILE  file which holds a list of allowed accounts
     --quiet, -q           do not prompt if account can be deduced
     --skip-lines INT      number of lines to skip from CSV file
     --tags, -t            prompt for transaction tags
@@ -96,7 +101,7 @@ From command line the syntax is `--long-option VALUE` with dashes, and
 in configuration file the syntax is `long_option=VALUE` with
 underscores.
 
-There is an order of _precedence_ for options. First hard coded default
+There is an order of _precedence_ for options. First hard coded defaults
 (documented below) are used, overridden by options from configuration
 file if any, and finally overridden by options from command line if any.
 
@@ -147,6 +152,13 @@ describes the date format in the CSV file.
 See the
 [python documentation](http://docs.python.org/library/datetime.html#strftime-strptime-behavior)
 for the various format codes supported in this expression.
+
+**`--csv-decimal-comma`**
+
+will assume that number use the comma ',' as decimal in the csv.
+
+If the `--ledger-decimal-comma` option is not set, comma will be
+converted into dot.
 
 **`--currency STR`**
 
@@ -209,6 +221,14 @@ See the
 [python documentation](http://docs.python.org/library/datetime.html#strftime-strptime-behavior)
 for the various format codes supported in this expression.
 
+**`--ledger-decimal-comma`**
+
+will assume that number should be print using the comma ',' as decimal
+when creating ledger entries.
+
+If the `--csv-decimal-comma` option is not set, dot will be converted
+into comma.
+
 **`--ledger-file FILE, -l FILE`**
 
 is ledger filename where to get the list of already defined accounts and
@@ -231,7 +251,19 @@ The file used will be first found in that order:
 2. `.icsv2ledgerrc-mapping` in current directory,
 3. `.icsv2ledgerrc-mapping` in home directory.
 
-Warning: the file must exists so that mapping are added to file.
+Warning: the file must exists so that mappings are added to the file.
+
+**`--accounts-file FILE`**
+
+is an optional file that can be used to hold a master list of all
+account names, and will be used as a source for account names.
+See section [Accounts file](#accounts-file).
+
+The file used will be first found in that order:
+
+1. Filename given on command line with `--accounts-file`,
+2. `.icsv2ledgerrc-accounts` in current directory,
+3. `.icsv2ledgerrc-accounts` in home directory.
 
 **`--quiet, -q`**
 
@@ -251,7 +283,7 @@ The normal behavior is for one description to prompt for payee and
 account, and store this in mapping file. By setting this option, the
 description can also be mapped to additional tags.
 
-At the prompt: fill a tagname and press Enter key as many time you need
+At the prompt: fill a tagname and press Enter key as many times as you need
 tags. Remove an existing tag by preceding it with minus, like
 `-tagname`. When finished, press Enter key on an empty line.
 
@@ -351,6 +383,23 @@ Mapping is based on your historical decisions. Later matching entries
 overwrite earlier ones, that is in example above `MY COMPANY 1234` will
 be mapped to `My Company 1234` and `Income:Salary:Tips`.
 
+Accounts File
+--------------
+
+To prevent inconsistencies it is possible to user ledger --strict mode, along
+with a file that defines a list of allowable accounts. (See the ledger 3
+manual, section 4.6 'Keeping it Consistent')
+
+The accounts file should look like:
+
+    account Expenses:Food
+    account Expenses:Enternainment
+    account Income:Salary
+    account Income:Salary:Tips
+
+All other lines will be ignored so you if you have a single ledger file that
+has account definitions mixed throughout it, it is safe (although potentially 
+time consuming) to pass it to icsv2ledger as the accounts-file.
 
 Transaction template file
 -------------------------
@@ -385,10 +434,14 @@ Known Issues
 On Mac OS X when CSV is passed via stdin to icsv2ledger you may not see
 any prompts offering defaults and asking for your input. This is due to
 an inferior readline library (libedit) installed by default on Mac OS X.
-Install a proper readline library and your good to go.
+Install a proper readline library and you're good to go.
 
     % sudo easy_install readline
 
+On Windows the default Python installation does not provide a readline
+library. The [pyreadline](https://pypi.python.org/pypi/pyreadline)
+library provides native python emulation of this functionality and
+must be installed to run this utility.
 
 Author
 ------
