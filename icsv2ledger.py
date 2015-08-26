@@ -629,7 +629,9 @@ def main():
     possible_payees = set([])
     possible_tags = set([])
     if options.ledger_file:
+        print("ledger file: " + str(options.ledger_file))
         possible_accounts = accounts_from_ledger(options.ledger_file)
+        print("Number of accounts: " + str(len(possible_accounts)))
         possible_payees = payees_from_ledger(options.ledger_file)
 
     # Read mappings
