@@ -1,6 +1,6 @@
 import os
 from PIL import Image
-from icsv2ledger import prompt_for_value
+import icsv2ledger
 # import readline
 # import rlcompleter
 import Tkinter, tkFileDialog
@@ -27,20 +27,29 @@ def setup_scanner(options):
     return device
 
 def try_scan(entry, payee, device, directory, attempts=3):
-    attempt = 0
+    attempt = 1
     receipt = None
-    while attempt < attempts:
+    while attempt <= attempts:
         try:
             receipt = scan_receipt(entry, payee, device, directory)
             break
-        except SaneException:
-            attempts += 1
-            print('Got SaneException, trying attempt {0} of 3'.format(attempts))
+        except:
+            attempt += 1
+            if attempt <= attempts:
+                print('Got Exception, trying attempt {0} of 3'.format(attempt))
+            else:
+                print('Too many exceptions, bailing')
+                raise
     return receipt
 
 def scan_receipt(entry, payee, device, directory):
     # http://docs.python.org/2/library/shutil.html
-    value = prompt_for_value('(S)can, (C)hoose, or (P)ass', ['Scan', 'Choose', 'Pass'], 'Pass')
+    amount = entry.credit if entry.credit else entry.debit
+    for ch in ['-', '.']:
+        if ch in amount:
+            amount = amount.replace(ch, '')
+
+    value = icsv2ledger.prompt_for_value('(S)can, (M)ult (C)hoose, or (P)ass', ['Scan', 'Mult', 'Choose', 'Pass'], 'Pass')
     file_extension = ".jpg"
     file_is_pdf = False
     if value:
@@ -70,15 +79,33 @@ def scan_receipt(entry, payee, device, directory):
         except EOFError:
             pass
         img = scan_session.images[0]
+    elif value == 'MULT' or value == 'M':
+        pages = int(raw_input("Number of pages: [2] > ") or "2")
+        images = []
+        for page in range(pages):
+            scan_session = device.scan(multiple=False)
+            try:
+                while True:
+                    scan_session.scan.read()
+            except SaneException:
+                scan_session.scan.cancel()
+                raise
+            except EOFError:
+                pass
+            images.append(scan_session.images[0]) 
+            if page < pages - 1:
+                raw_input('Page {0} ready?'.format(str(page+2)))
+        img = images[0]
+        for page in range(1, pages):
+            image = images[page]
+            output_file_name = '{0}_{1}_{2}_Page_{4}{3}'.format(entry.date, payee, amount, file_extension, str(page+1))
+            output_file_path = os.path.join(directory, output_file_name)
+            image.save(output_file_path, "JPEG")
+
     elif value == 'PASS' or value == 'P':
         return
     else:
-        raise ValueError('Must be one of: Scan, Choose, or Pass')
-
-    amount = entry.credit if entry.credit else entry.debit
-    for ch in ['-', '.']:
-        if ch in amount:
-            amount = amount.replace(ch, '')
+        raise ValueError('Must be one of: Scan, Mult, Choose, or Pass')
 
     output_file_name = '{0}_{1}_{2}{3}'.format(entry.date, payee, amount, file_extension)
     output_file_path = os.path.join(directory, output_file_name)
