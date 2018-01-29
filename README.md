@@ -56,11 +56,13 @@ Options summary
 ---------------
 
 Options can either be used from command line or in configuration file.
-`--account` is a mandatory option on command line. `--config-file` and
+`--account` is a mandatory option on command line. `--config-file`, `--src-account` and
 `--help` are only usable from command line.
 
     --account STR, -a STR
                           ledger account used as source
+    --src-account STR
+                          ledger account used as source, overrides --account option
     --clear-screen, -C    clear screen for every transaction
     --cleared-character {*,!, }
                           character to clear a transaction
@@ -78,6 +80,8 @@ Options can either be used from command line or in configuration file.
     --delimiter           CSV delimiter
     --desc STR            CSV column number matching description
     --effective-date INT  CSV column number matching effective date
+    --encoding STR        text encoding of CSV input file
+    --incremental         append output as transactions are processed
     --ledger-date-format STR
                           date format for ledger output file
     --ledger-decimal-comma
@@ -87,9 +91,15 @@ Options can either be used from command line or in configuration file.
     --mapping-file FILE   file which holds the mappings
     --accounts-file FILE  file which holds a list of allowed accounts
     --quiet, -q           do not prompt if account can be deduced
+    --reverse             reverse the order of entries in the CSV file
+    --skip-dupes          detect transactions that have alrady been imported and skip
+    --confirm-dupes       detect transactions that have already been imported and prompt to skip
     --skip-lines INT      number of lines to skip from CSV file
+    --skip-older-than     skip entries more than X days old
     --tags, -t            prompt for transaction tags
     --template-file FILE  file which holds the template
+    --prompt-add-mappings prompt before adding entries to mapping file
+    --entry-review        displays summary of ledger formatted entry and prompts before committing
     -h, --help            show this help message and exit
 
 
@@ -118,6 +128,10 @@ overridden in configuration file. See section
 [Configuration file example](#configuration-file-example) where `SAV`
 from command line is overridden with `account=Assets:Bank:Savings
 Account`.
+
+**`--src-account STR`**
+
+similar to --acount option, it is the ledger account used as source for ledger transactions but allows the --account option to be overriden after the config file has been parsed.  This is a command-line only option and must not be provided in any section of the config file.  Use of this option allows users to treat sections of the config file as generic import recipes that can be used to import all files that use the same layout while providing a means to specify the ledger source account to use during the importing of transactions.
 
 **`--clear-screen, -C`**
 
@@ -150,7 +164,7 @@ See also documentation of `--debit` option for negating amounts.
 describes the date format in the CSV file. 
 
 See the
-[python documentation](http://docs.python.org/library/datetime.html#strftime-strptime-behavior)
+[python documentation](http://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior)
 for the various format codes supported in this expression.
 
 **`--csv-decimal-comma`**
@@ -188,7 +202,8 @@ for ledger transactions. Default is `Expenses:Unknown`.
 
 **`--delimiter STR`**
 
-is the CSV delimiter character. Default is `,`.
+is the CSV delimiter character. Default is `,`. Special characters can be
+expressed using standard escape sequences, such as `\t` for a tab.
 
 **`--desc STR`**
 
@@ -210,6 +225,16 @@ effective date. Default is `0`. Use of this option currently requires a
 template file. See section
 [Transaction template file](#transaction-template-file).
 
+**`--encoding STR`**
+
+is the text encoding of the CSV input file. Default is `utf-8`. The encoding
+should be specified if the CSV file contains non-ASCII characters (typically in
+the transaction description) in an encoding other than UTF-8.
+
+**`--incremental`**
+
+appends output as transactions are processed. The default flow is to process all CSV input and then output the result. When `--incremental` is specified, output is written after every transaction. This allows one to stop (ctrl-c) and restart to progressively process a CSV file (`--skip-dupes` is a useful companion option).
+
 **`--ledger-date-format STR`**
 
 describes the date format to be used when creating ledger entries. If
@@ -218,7 +243,7 @@ defined to be able to convert dates. If `--ledger-date-format` is not
 defined, then the date from CSV file is reused.
 
 See the
-[python documentation](http://docs.python.org/library/datetime.html#strftime-strptime-behavior)
+[python documentation](http://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior)
 for the various format codes supported in this expression.
 
 **`--ledger-decimal-comma`**
@@ -270,6 +295,18 @@ The file used will be first found in that order:
 will not prompt if account can be deduced from existing mapping. Default
 is `False`.
 
+**`--reverse`**
+
+will print ledger entries in reverse of their order in the CSV file.
+
+**`--skip-dupes`**
+
+will attempt to detect duplicate transcactions in ledger file by comparing MD5Sum of transactions.  The MD5Sum is calculated from the formatted CSV values including the source account.  The source account is included to avoid false postives on generic transaction descriptions when the source account is different and thus should not be considered a duplicate. MD5Sum of existing transactions are as a `; MD5Sum: ...` comment in the current ledgerfile (which means your output template will need this comment). This can help if you download statements without using a precise date range. A useful pattern is to include MD5Sum comments for both "sides" of a transaction if you download from multiple sources that resolve to a single transaction (e.g. paying a credit card from checking).  Note: use of this flag by itself will detect and skip duplicate entries automatically with no interaction from user.  If you want to be prompted and determine whether to skip or not see --confirm-dupes.
+
+**`--confirm-dupes`**
+
+same as --skip-dupes but will prompt user to indicate if they want the detected duplicate entry to be skipped or treated as a valid entry.  This is useful when importing transactions that commonly contain generic descriptions.
+
 **`--skip-lines INT`**
 
 is the number of lines to skip from the beginning of the CSV file.
@@ -302,6 +339,18 @@ The file used will be first found in that order:
 2. `.icsv2ledgerrc-template` in current directory,
 3. `.icsv2ledgerrc-template` in home directory.
 
+**`--skip-older-than DAYS`**
+
+will not process any entries in the CSV file which are more than DAYS old.
+If DAYS is negative then the entire CSV file is processed.
+
+**`--prompt-add-mappings`**
+
+will prompt user before adding entries to the mapping file. This is useful when you would prefer to manually adjust an existing entry or add the entry manually to the mapping file.
+
+**`--entry-review`**
+
+allows the ability to review the generated ledger entry and Commit, Modify or Skip the entry.  If the entry is not committed then the values for payee, account and optionally tags is prompted for again.
 
 Example
 -------
@@ -411,9 +460,10 @@ The built-in default template is as follows:
         ; CSV: {csv}
         {debit_account:<60}    {debit_currency} {debit}
         {credit_account:<60}    {credit_currency} {credit}
+        {tags}
 
 Details on how to format the template are found in the
-[Format Specification Mini-Language](http://docs.python.org/library/string.html#formatspec).
+[Format Specification Mini-Language](http://docs.python.org/3/library/string.html#formatspec).
 
 The values that can be used are: `date`, `effective_date`, `cleared_character`,
 `payee`, `transaction_index`, `debit_account`, `debit_currency`, `debit`,
@@ -421,6 +471,13 @@ The values that can be used are: `date`, `effective_date`, `cleared_character`,
 And also the addon tags like `addon_xxxx`. See section
 [Addons](#addons).
 
+
+Runtime Requirements
+-------------------------
+
+icsv2ledger should work in a vanilla Python 2.7 or 3.x environment, as it uses only base packages.
+
+Note that the 'ledger' binary must be installed in the local PATH in which icsv2ledger is used, as the binary is invoked for various operations.
 
 Contributing
 ------------
