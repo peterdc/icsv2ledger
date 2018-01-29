@@ -649,7 +649,10 @@ def main():
         possible_tags.update(set(m[3]))
 
     if options.scan_receipts:
-        device = scan.setup_scanner(scan.onesided_no_swdeskew)
+        try:
+            device = scan.setup_scanner(scan.onesided_no_swdeskew)
+        finally:
+            pyinsane2.exit()
 
     def get_payee_and_account(entry):
         payee = entry.desc
