@@ -19,6 +19,7 @@ import readline
 import configparser
 from argparse import HelpFormatter
 import scan
+import pyinsane2
 from datetime import datetime
 from operator import attrgetter
 from locale   import atof
@@ -958,11 +959,6 @@ def main():
             else:
                 receipt = None
 
-            ledger_lines.append(
-                entry.journal_entry(i + 1, payee, account, tags, receipt))
-
-        return ledger_lines
-
             # detect duplicate entries in the ledger file and optionally skip or prompt user for action
             #if options.skip_dupes and csv_lines[i].strip() in csv_comments:
             if (options.skip_older_than < 0) or (entry.days_old <= options.skip_older_than):
@@ -1002,7 +998,7 @@ def main():
                 if value.upper().strip() in ('S','SKIP'):
                     continue
 
-                yield entry.journal_entry(i + 1, payee, account, tags)
+                yield entry.journal_entry(i + 1, payee, account, tags, receipt)
 
     try:
         process_input_output(options.infile, options.outfile)

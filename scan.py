@@ -8,13 +8,21 @@ onesided_no_swdeskew = {'resolution': 300, 'rollerdeskew': 1, 'mode': 'Gray', 's
 
 def set_device_options(options, device):
     for key in options:
+        # print(key)
+        # print(device.options[key].constraint)
+        # print(options[key])
         device.options[key].value = options[key]
     return device
 
 def setup_scanner(options):
     pyinsane2.init()
     try:
-        device = pyinsane2.Scanner(name="canon_dr:libusb:020:008")
+        devices = pyinsane2.get_devices()
+        if len(devices) <= 0:
+            print('no scanner available')
+            return None
+        device = devices[0]
+        # device = pyinsane2.Scanner(name="canon_dr:libusb:020:008")
         print("I'm going to use the following scanner: %s" % (str(device)))
     except PyinsaneException:
             print("No scanner found")
@@ -53,30 +61,32 @@ def scan_receipt(entry, payee, device, directory):
     else:
         value = 'PASS'
 
-    elif value == 'SCAN' or value == 'S':
+    if value == 'SCAN' or value == 'S':
+        pyinsane2.maximize_scan_area(device)
         scan_session = device.scan(multiple=False)
         try:
             while True:
                 scan_session.scan.read()
+        except EOFError:
+            pass
         except PyinsaneException:
             scan_session.scan.cancel()
             raise
-        except EOFError:
-            pass
         img = scan_session.images[0]
     elif value == 'MULT' or value == 'M':
         pages = int(raw_input("Number of pages: [2] > ") or "2")
         images = []
         for page in range(pages):
+            pyinsane2.maximize_scan_area(device)
             scan_session = device.scan(multiple=False)
             try:
                 while True:
                     scan_session.scan.read()
+            except EOFError:
+                pass
             except PyinsaneException:
                 scan_session.scan.cancel()
                 raise
-            except EOFError:
-                pass
             images.append(scan_session.images[0]) 
             if page < pages - 1:
                 raw_input('Page {0} ready?'.format(str(page+2)))
@@ -94,5 +104,6 @@ def scan_receipt(entry, payee, device, directory):
 
     output_file_name = '{0}_{1}_{2}{3}'.format(entry.date, payee, amount, file_extension)
     output_file_path = os.path.join(directory, output_file_name)
+    img.save(output_file_path, "JPEG")
     return(output_file_path)
 
