@@ -26,7 +26,8 @@ def setup_scanner(options):
         print("I'm going to use the following scanner: %s" % (str(device)))
     except PyinsaneException:
             print("No scanner found")
-            return
+            device = None
+            return device
     device = set_device_options(options, device)
     return device
 
