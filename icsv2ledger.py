@@ -670,7 +670,7 @@ def accounts_from_ledger(ledger_file):
 
 
 def from_ledger(ledger_file, command):
-    ledger = 'ledger'    
+    ledger = 'ledger'
     for f in ['/usr/bin/ledger', '/usr/local/bin/ledger']:
         if os.path.exists(f):
             ledger = f
@@ -791,6 +791,7 @@ def prompt_for_value(prompt, values, default):
 
     return input('{0} [{1}] > '.format(prompt, default))
 
+
 def reset_stdin():
     """ If file input is stdin, then stdin must be reset to be able
     to use readline. How to reset stdin in explained in below URLs.
@@ -844,7 +845,8 @@ def main():
         try:
             device = scan.setup_scanner(scan.onesided_no_swdeskew)
         finally:
-            pyinsane2.exit()
+            pass
+        #     pyinsane2.exit()
 
     def get_payee_and_account(entry):
         payee = entry.desc
@@ -953,11 +955,6 @@ def main():
 
             entry = Entry(row, csv_lines[i],
                           options)
-            payee, account, tags = get_payee_and_account(entry)
-            if options.scan_receipts:
-                receipt = scan.try_scan(entry, payee, device, options.image_directory)
-            else:
-                receipt = None
 
             # detect duplicate entries in the ledger file and optionally skip or prompt user for action
             #if options.skip_dupes and csv_lines[i].strip() in csv_comments:
@@ -965,6 +962,7 @@ def main():
                 if options.clear_screen:
                     print('\033[2J\033[;H')
                 print('\n' + entry.prompt())
+                receipt = None
                 if (options.skip_dupes or options.confirm_dupes) and entry.md5sum in md5sum_hashes:
                     value = 'Y'
                     # if interactive flag was passed prompt user before skipping transaction
@@ -997,14 +995,21 @@ def main():
                         break
                 if value.upper().strip() in ('S','SKIP'):
                     continue
+                if options.scan_receipts and device:
+                    receipt = scan.try_scan(entry, payee, device, options.image_directory)
 
-                yield entry.journal_entry(i + 1, payee, account, tags, receipt)
+            yield entry.journal_entry(i + 1, payee, account, tags, receipt)
 
     try:
         process_input_output(options.infile, options.outfile)
     except KeyboardInterrupt:
         print()
         sys.exit(0)
+    finally:
+        if options.scan_receipts:
+            if device:
+                pyinsane2.exit()
+
 
 if __name__ == "__main__":
     main()
