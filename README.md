@@ -82,6 +82,7 @@ Options can either be used from command line or in configuration file.
     --effective-date INT  CSV column number matching effective date
     --encoding STR        text encoding of CSV input file
     --incremental         append output as transactions are processed
+    --ledger-binary FILE  path to ledger binary  
     --ledger-date-format STR
                           date format for ledger output file
     --ledger-decimal-comma
@@ -234,6 +235,11 @@ the transaction description) in an encoding other than UTF-8.
 **`--incremental`**
 
 appends output as transactions are processed. The default flow is to process all CSV input and then output the result. When `--incremental` is specified, output is written after every transaction. This allows one to stop (ctrl-c) and restart to progressively process a CSV file (`--skip-dupes` is a useful companion option).
+
+**`--ledger-binary`**
+
+is the path to the ledger binary. Not neccessary if it is in `PATH` or is at either `/usr/bin/ledger` or
+`/usr/local/bin/ledger`
 
 **`--ledger-date-format STR`**
 
@@ -423,6 +429,7 @@ A typical mapping file might look like:
     /MACY'S/,"Macy's, Inc.",Expenses:Food
     MY COMPANY 1234,My Company,Income:Salary
     MY COMPANY 1234,My Company 1234,Income:Salary:Tips
+    MY TRANSFER 1,Transfer to Savings,Transfers:Savings,transfer_to=Assets:Savings
 
 It uses simple string-matching by default, but if you put a '/' at the
 start and end of a string it will instead be interpreted as a regular
@@ -431,6 +438,24 @@ expression.
 Mapping is based on your historical decisions. Later matching entries
 overwrite earlier ones, that is in example above `MY COMPANY 1234` will
 be mapped to `My Company 1234` and `Income:Salary:Tips`.
+
+**Experimental**
+You can use `transfer_to=` to another asset to make the transfer to record in a "transfer"
+double-entry pattern.
+In the example above for the Transfers:Savings account with the transfer_to=Assets:Savings
+would create the following entries:
+
+2012/01/01 Transfer to Savings
+ Transfers:Savings  $100
+ Assets:Checking
+
+2012/01/01 Transfer to Savings
+ Assets:Savings  $100
+ Transfers:Savings
+
+You can additionally add a `file=` value after `transfer_to=` to write the second entry in another file.
+This is useful if you split your accounts per file and want to write the first transaction in the checking file
+and the second in the savings file.
 
 Accounts File
 --------------
